@@ -1,0 +1,50 @@
+name: Auto create branch and file
+
+on:
+  schedule:
+    - cron: '11 3 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  create-branch-and-file:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get latest SHA of main (as user)
+        id: base
+        env:
+          GH_TOKEN: ${{ secrets.PAT_USER }}
+        run: |
+          SHA=$(gh api repos/${{ github.repository }}/git/refs/heads/main --jq '.object.sha')
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create branch via Git refs API (as user)
+        id: mkbranch
+        env:
+          GH_TOKEN: ${{ secrets.PAT_USER }}
+        run: |
+          ts="$(date -u +'%Y%m%d-%H%M%S')"
+          new="auto/${ts}"
+          gh api repos/${{ github.repository }}/git/refs \
+            --method POST \
+            -H "Content-Type: application/json" \
+            -f ref="refs/heads/${new}" \
+            -f sha="${{ steps.base.outputs.sha }}"
+          echo "branch=$new" >> "$GITHUB_OUTPUT"
+
+      - name: Create file in the new branch (as user)
+        env:
+          GH_TOKEN: ${{ secrets.PAT_USER }}
+        run: |
+          branch="${{ steps.mkbranch.outputs.branch }}"
+          path="files/auto-${branch#auto/}.txt"
+          content=$(printf 'Created at %s UTC\nRepo: %s\nBranch: %s\n' "$(date -u +'%F %T')" "${GITHUB_REPOSITORY}" "$branch" | base64 -w0)
+          gh api \
+            --method PUT \
+            -H "Content-Type: application/json" \
+            /repos/${{ github.repository }}/contents/${path} \
+            -f message="chore: add ${path}" \
+            -f branch="${branch}" \
+            -f content="${content}"

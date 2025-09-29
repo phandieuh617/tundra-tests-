@@ -1,0 +1,31 @@
+name: Auto Issue (every 5 min)
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '2/5 * * * *'
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  create:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create issue via API (JSON body) as user
+        env:
+          GH_TOKEN: ${{ secrets.PAT_USER }}
+        run: |
+          now="$(date -u +'%F %T')"
+          cat > body.json <<JSON
+          {
+            "title": "Pulse ${now}",
+            "body": "Automated issue from schedule (UTC time above).",
+            "labels": ["automation", "pulse"]
+          }
+          JSON
+          gh api repos/${{ github.repository }}/issues \
+            --method POST \
+            --header "Content-Type: application/json" \
+            --input body.json
